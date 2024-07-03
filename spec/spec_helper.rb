@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "llama_index_rb"
+require "pry"
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
