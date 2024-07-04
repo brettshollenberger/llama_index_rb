@@ -67,6 +67,20 @@ module LlamaIndexRb
             answer
           end
           span :run
+
+          def run_async(a)
+            a * 2
+          end
+          span :run_async
+          events :run_async, start: TestStartEvent, end: TestEndEvent
+
+          def parallel_run(n)
+            Parallel.map((1..n).to_a, in_threads: 3) do |num|
+              run_async(num)
+            end
+          end
+          span :parallel_run
+          events :parallel_run, start: TestStartEvent, end: TestEndEvent
         end
 
         describe "spanning a method + adding events" do
@@ -120,6 +134,26 @@ module LlamaIndexRb
           end
         end
 
+        describe "spanning async functions + capturing the entire span" do
+          it "handles the entire span" do
+            result = TestProcess.new.parallel_run(3)
+            expect(result).to eq [2, 4, 6]
+
+            events = TestEventHandler.events
+            expect(events.length).to eq(8)
+            event_counts = events.group_by do |event|
+              event.class.name.gsub(/LlamaIndexRb::Core::Instrumentation::/, "")
+            end.transform_values(&:size)
+            expect(event_counts["TestStartEvent"]).to eq 4
+            expect(event_counts["TestEndEvent"]).to eq 4
+
+            span_counts = events.group_by(&:span_id).transform_values(&:size)
+
+            expect(span_counts.keys.count).to eq 4
+            expect(span_counts.values).to all(eq 2) # Each span gets 2 events, start and end
+          end
+        end
+
         describe "spanning async functions with errors" do
           it "handles async function with span and raises error" do
             Parallel.map([-1, -1, -1], in_threads: 3) do |num|
@@ -144,61 +178,68 @@ module LlamaIndexRb
         end
 
         describe "span decorator idempotency" do
-          it "ensures span decorator is idempotent", :focus do
-            func = proc { 1 }
-            expect(dispatcher.span(dispatcher.span(dispatcher.span(func))).call).to eq(1)
-            expect(dispatcher.span_enter.call_count).to eq(1)
-          end
+          it "ensures span decorator is idempotent" do
+            class TestProcess
+              span :run
+              span :run
+              span :run
+            end
 
-          it "ensures span decorator is idempotent with other decorators" do
-            func = proc { 1 }
-            decorator = proc { |f| f }
-            expect(dispatcher.span(decorator.call(dispatcher.span(decorator.call(func)))).call).to eq(1)
-            expect(dispatcher.span_enter.call_count).to eq(1)
+            instance = TestProcess.new.run(1, b: 1) { |a, b| a + b }
+            events = TestEventHandler.events
+            expect(events.count).to eq 2
+            expect(events.first).to be_a(TestStartEvent)
+            expect(events.last).to be_a(TestEndEvent)
           end
         end
 
-        describe "decorating abstract methods" do
+        describe "subclassing" do
           it "ensures mixin decorates abstract methods" do
-            abstract_class = Class.new do
-              include DispatcherSpanMixin
+            class AbstractClass
+              include LlamaIndexRb::Core::Dispatchable
+              dispatchable("test")
 
-              def self.abstract_method
+              def abstract_method
                 raise NotImplementedError
               end
-
-              dispatcher.span :abstract_method
+              span :abstract_method
+              events :abstract_method, start: TestStartEvent, end: TestEndEvent
             end
 
-            concrete_class = Class.new(abstract_class) do
-              def self.abstract_method
+            class ConcreteClass < AbstractClass
+              def abstract_method
                 1
               end
             end
 
-            expect(concrete_class.abstract_method).to eq(1)
-            expect(dispatcher.span_enter.call_count).to eq(1)
+            expect(dispatcher).to receive(:span_enter).once
+            expect(ConcreteClass.new.abstract_method).to eq(1)
+            events = TestEventHandler.events
+            expect(events.count).to eq 2
           end
 
           it "ensures mixin decorates overridden methods" do
-            base_class = Class.new do
-              include DispatcherSpanMixin
+            class ParentClass
+              include LlamaIndexRb::Core::Dispatchable
+              dispatchable("test")
 
-              def self.method
+              def original_method
                 1
               end
-
-              dispatcher.span :method
+              span :original_method
+              events :original_method, start: TestStartEvent, end: TestEndEvent
             end
 
-            subclass = Class.new(base_class) do
-              def self.method
+            class SubClass < ParentClass
+              def original_method
                 2
               end
             end
 
-            expect(subclass.method).to eq(2)
-            expect(dispatcher.span_enter.call_count).to eq(1)
+            expect(dispatcher).to receive(:span_enter).once
+            expect(SubClass.new.original_method).to eq(2)
+            events = TestEventHandler.events
+            expect(events.count).to eq 2
           end
         end
       end
