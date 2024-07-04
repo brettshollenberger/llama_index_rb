@@ -1,5 +1,6 @@
 require_relative "rails_handler"
 require_relative "event_context"
+require_relative "global_stack_trace"
 
 module LlamaIndexRb
   module Core

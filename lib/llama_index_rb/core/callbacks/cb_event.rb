@@ -11,7 +11,7 @@ module LlamaIndexRb
         def initialize(event_type, payload: nil, time: nil, id_: nil)
           @event_type = event_type
           @payload = payload || {}
-          @time = time || Time.now.strftime(TIMESTAMP_FORMAT)
+          @time = time || Time.current.strftime(TIMESTAMP_FORMAT)
           @id_ = id_ || SecureRandom.uuid
         end
 
