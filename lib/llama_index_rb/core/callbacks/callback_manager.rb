@@ -1,9 +1,10 @@
-require_relative "base_handler"
+require_relative "rails_handler"
+require_relative "event_context"
 
 module LlamaIndexRb
   module Core
     module Callbacks
-      class Base < BaseHandler
+      class CallbackManager < RailsHandler
         module CBEventType
           CHUNKING = "chunking"
           NODE_PARSING = "node_parsing"
@@ -134,6 +135,34 @@ module LlamaIndexRb
             end
           end
           GlobalStackTrace.set_trace_ids(current_trace_stack_ids)
+        end
+
+        def event(event_type, payload: nil, event_id: nil)
+          event = EventContext.new(self, event_type, event_id: event_id)
+          event.on_start(payload: payload)
+
+          payload = nil
+          begin
+            yield event
+          rescue StandardError => e
+            payload = { EventPayload::EXCEPTION => e }
+            e.instance_variable_set(:@event_added, true) unless e.instance_variable_defined?(:@event_added)
+            event.on_end(payload: payload) unless event.finished
+            raise
+          ensure
+            event.on_end(payload: payload) unless event.finished
+          end
+        end
+
+        def as_trace(trace_id)
+          start_trace(trace_id: trace_id)
+          yield
+        rescue StandardError => e
+          on_event_start(CBEventType::EXCEPTION, payload: { EventPayload::EXCEPTION => e })
+          e.instance_variable_set(:@event_added, true) unless e.instance_variable_defined?(:@event_added)
+          raise
+        ensure
+          end_trace(trace_id: trace_id)
         end
 
         def reset_trace_events

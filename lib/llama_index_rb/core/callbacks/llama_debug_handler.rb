@@ -1,13 +1,13 @@
 require "time"
 require "logger"
-require_relative "base_handler"
+require_relative "rails_handler"
 require_relative "cb_event"
 require_relative "event_stats"
 
 module LlamaIndexRb
   module Core
     module Callbacks
-      class LlamaDebugHandler < BaseHandler
+      class LlamaDebugHandler < RailsHandler
         TIMESTAMP_FORMAT = CBEvent::TIMESTAMP_FORMAT
 
         attr_reader :event_pairs_by_type, :event_pairs_by_id, :sequential_events

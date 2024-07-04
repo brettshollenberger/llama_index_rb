@@ -31,5 +31,9 @@ module LlamaIndexRb
     def self.pop
       Thread.current[GLOBAL_TRACE_KEY].pop
     end
+
+    def self.set_trace_ids(trace_ids)
+      Thread.current[GLOBAL_TRACE_KEY] = trace_ids
+    end
   end
 end
